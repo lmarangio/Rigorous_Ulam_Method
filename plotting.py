@@ -6,11 +6,10 @@ These functions return plots. One can add plots with `p1 + p2` and show them wit
 
 from scipy.sparse.linalg import eigs
 from sparse import *
-from sage.all import scatter_plot, real, imag, RIF, bar_chart, plot_step_function, sqrt, plot, line
+from sage.all import scatter_plot, real, imag, RIF, bar_chart, plot_step_function, sqrt, plot
 import numpy as np
 from partition import step_function
-from injection import evaluate_sawtooth
-from warnings import warn
+
 
 def plot_spectrum(P, neigs=30, **kwargs):
 	"""
@@ -67,20 +66,19 @@ def plot_measure(v, partition, error=None, basis='Ulam', norm='L1', **kwargs):
 	if basis == 'Ulam' or basis == 'ulam':
 		steps = tuple(step_function(v, partition))
 		p = plot_step_function(steps, **kwargs)
-	elif basis == 'hat':
-		points = zip(partition, np.append(v, v[0]))
-		p = line(points, **kwargs)
 	else:
-		raise ValueError("invalid basis type")
+		raise ValueError, "invalid basis type"
 		
 	if error is not None:
 		if norm == 'L1':
 			p += bar_chart([sqrt(error)], width=sqrt(error), color='green', legend_label='Area of the total error')
 		elif norm == 'Linf' or norm == 'C0':
-			p += line([(x, y-error) for (x, y) in points], color='green', legend_label='error bounds')
-			p += line([(x, y+error) for (x, y) in points], color='green')
+			steps_inf = [(x,y-error) for (x,y) in steps]
+			steps_sup = [(x,y+error) for (x,y) in steps]
+			p += plot_step_function(steps_inf, color='green', legend_label='error bounds')
+			p += plot_step_function(steps_sup, color='green')
 		else:
-			raise ValueError("invalid norm type")
+			raise ValueError, "invalid norm type"
 	
 	return p
 
@@ -90,29 +88,10 @@ def plot_basis_element(basis, i, **kwargs):
 
 	return plot(lambda x: basis.evaluate(i, RIF(x)).center(), 0,1, **kwargs)
 
-def plot_basis_element_composed_with_dynamic(basis, i, dynamic, **kwargs):
+def plot_basis_element_composed_with_dynamic(basis, i, dynamic):
 	if not 'legend_label' in kwargs:
 		kwargs['legend_label'] = 'phi \circ T'
 	return plot(lambda x: basis.evaluate(i, dynamic.f(RIF(x))).center(), 0,1, **kwargs)
-
-def plot_sawtooth(basis, **kwargs):
-	warn('Deprecated: now the sawtooth is a normal basis function inside injection.py')
-
-	if not 'legend_label' in kwargs:
-		kwargs['legend_label'] = 'sawtooth'
-
-	return plot(lambda x: evaluate_sawtooth(basis.partition, RIF(x)).center(), 0,1, **kwargs)
-
-def plot_sawtooth_perron_operator(basis, dynamic, **kwargs):
-	warn('Deprecated: now the sawtooth is a normal basis function inside injection.py')
-
-	if not 'legend_label' in kwargs:
-		kwargs['legend_label'] = 'L sawtooth'
-
-	f = lambda x: evaluate_sawtooth(basis.partition, RIF(x))
-
-	return plot(lambda x: dynamic.perron_operator(f, x, epsilon=1e-10).center(), 0, 1, **kwargs)
-
 
 def plot_perron_operator(basis, i, dynamic, **kwargs):
 	f = lambda x: basis.evaluate(i, RIF(x))

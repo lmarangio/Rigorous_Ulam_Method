@@ -10,10 +10,10 @@ from sage.all import VectorSpace, RR, vector
 import numpy as np
 from scipy.sparse import csr_matrix
 from collections import Counter
+from itertools import izip
 from sage.all import RealNumber
-from sage.matrix.matrix import Matrix
 
-__all__ = ['sparse_matvec', 'sparse_vecmat', 'interval_norm1_error', 'interval_norminf_error', 'sage_sparse_to_scipy_sparse', 'max_nonzeros_per_row', 'norm1']
+__all__ = ['sparse_matvec', 'sparse_vecmat', 'interval_norm1_error', 'sage_sparse_to_scipy_sparse', 'max_nonzeros_per_row', 'norm1']
 
 def sparse_matvec(P,v):
 	"""
@@ -23,7 +23,7 @@ def sparse_matvec(P,v):
 	"""
 	
 	w = P.parent().column_space()(0)
-	for (ij, val) in P.dict().items():
+	for (ij, val) in P.dict().iteritems():
 		w[ij[0]] += val*v[ij[1]]
 	return w
 	
@@ -35,7 +35,7 @@ def sparse_vecmat(v,P):
 	"""
 	
 	w = P.parent().row_space()(0)
-	for (ij, val) in P.dict().items():
+	for (ij, val) in P.dict().iteritems():
 		w[ij[1]] += v[ij[0]] * val
 	return w
 	
@@ -48,7 +48,7 @@ def interval_norm1_error(P):
 	"""
 	
 	w = VectorSpace(RealField(rnd='RNDU'),P.dimensions()[1])(0)
-	for (ij, val) in P.dict().items():
+	for (ij, val) in P.dict().iteritems():
 		w[ij[1]] += val.absolute_diameter() #operations are rounded up because the LHS is so
 	return max(w)
 
@@ -60,25 +60,21 @@ def interval_norminf_error(P):
 	"""
 	
 	w = VectorSpace(RealField(rnd='RNDU'),P.dimensions()[0])(0)
-	for (ij, val) in P.dict().items():
+	for (ij, val) in P.dict().iteritems():
 		w[ij[0]] += val.absolute_diameter() #operations are rounded up because the LHS is so
 	return max(w)
 
-def sage_sparse_to_scipy_sparse(P, op = lambda x: RR(x.center())):
+def sage_sparse_to_scipy_sparse(P):
 	"""
-	Convert a Sage sparse matrix to a scipy CSR one without going 
-	through the full matrix.
-	If the matrix is an interval one, converts the
-	intervals to reals using op (default: center).
-	Otherwise, op is ignored.
+	Convert a Sage sparse matrix to a scipy CSR one without going through the full matrix.
 	
 	Method taken from http://www.sagenb.org/src/plot/matrix_plot.py.
 	"""
 	
-	if not is_RealIntervalFieldElement(P[0,0]):
-		op = lambda x: x
+	if is_RealIntervalFieldElement(P[0,0]):
+		P = P.apply_map(lambda x: RR(x.center()))
 	entries = list(P._dict().items())
-	data = np.asarray([op(d) for _,d in entries], dtype=float)
+	data = np.asarray([d for _,d in entries], dtype=float)
 	positions = np.asarray([[row for (row,col),_ in entries],
 		[col for (row,col),_ in entries]], dtype=int)
 	return csr_matrix((data, positions), shape=(P.nrows(), P.ncols()))
@@ -87,12 +83,8 @@ def max_nonzeros_per_row(P):
 	"""
 	Max number of nonzeros in a row of the matrix P
 	"""
-	if isinstance(P, Matrix): #Sage matrix
-		c = Counter(i for (i,j) in P.dict())
-		return max(c.values())
-	else: #assuming scipy matrix
-		c = Counter(P.nonzero()[0])
-		return max(c.values())
+	c = Counter(i for (i,j) in P.dict())
+	return max(c.values())
 
 def norm1(v, rnd='RNDN'):
 	"""
@@ -118,19 +110,9 @@ def matrix_norm1(PP, rnd='RNDN'):
 	if not PP.format == 'csr':
 		raise NotImplementedError
 	column_norms = vector(RealField(rnd=rnd), PP.shape[1])
-	for j, Pij in zip(PP.indices, PP.data):
+	for j, Pij in izip(PP.indices, PP.data):
 		column_norms[j] += abs(Pij)
 	return max(column_norms)
-
-def norminf(v, rnd='RNDN'):
-	"""
-	Infinity-norm of a vector.
-
-	The `rnd` parameter is there for consistency with norm1, but it is not used in computation.
-	It affects the parent() field of the return type, though.
-	"""
-
-	return RealNumber(np.linalg.norm(v, np.inf), rnd=rnd)
 	
 def matrix_norminf(PP, rnd='RNDN'):
 	"""
@@ -143,19 +125,6 @@ def matrix_norminf(PP, rnd='RNDN'):
 	if not PP.format == 'csr':
 		raise NotImplementedError
 
-	return max(norm1(PP.data[PP.indptr[i]:PP.indptr[i+1]], rnd=rnd) for i in range(PP.shape[0]))
+	return max(norm1(PP.data[PP.indptr[i]:PP.indptr[i+1]], rnd=rnd) for i in xrange(PP.shape[0]))
 	
-def gamma(n):
-	"""
-	gamma constants for error propagation; see [Higham, Accuracy and stability, p. 63]
-	"""
-	Rup = RealField(rnd='RNDU')
-	Rdown = RealField(rnd='RNDD')
-		
-	gamma = Rup(np.finfo(float).eps) * n;
-	if gamma >= 1:
-		raise ValueError('n too large for error propagation bounds')
 
-	gamma = gamma / (Rdown(1)-gamma)
-	return gamma
-	

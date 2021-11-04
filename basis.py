@@ -2,19 +2,14 @@
 Abstract base class for bases. All your bases are belong to us.
 """
 
-from sage.all import RIF, vector, matrix
+from sage.all import RIF, vector
 from sparse import sparse_matvec
-from warnings import warn
 
 class Basis:
 	"""
 	Defines the basis of a space used for approximating the invariant measure.
 	
 	This definition includes its dual basis, since they are intertwined together.
-
-	It also includes three norms: the "strong norm" (not really a norm), the "weak norm",
-	and the "Lasota-Yorke weak norm" || ||_{w'} (which may be different, in the case of the Lip-L1 LY).
-
 	"""
 	
 	def __len__(self):
@@ -25,25 +20,19 @@ class Basis:
 	
 	def dual_composed_with_dynamic(self, dynamic, epsilon):
 		"""
-		Generator function that yields "dual objects".
+		Generator function that returns L^*V_i for each V_i in the dual.
 		
-		L^*V_i is "represented" via a suitable object or data structure 
-		(depending on the basis chosen).
-		For instance in the case of Ulam :math:`V_i(f) = \int_{I_i} f`, 
-		and :math:`L^*V_i = sum_{K: K is a preimage of I_i} \int_K`
-		all we need to represent  a summand of :math:`L^*V_i` is the two preimages 
-		:math:`T_k^{-1}(x_i),T_k^{-1}(x_{i+1})` on each branch.
-		In this case, we yield (i, (T_k^{-1}(x_i),T_k^{-1}(x_{i+1}))).
-
-		Yields:
-			pairs (i, dual_fragment), where i is an integer, and dual_fragment is an abstract
-			      object that can be used in project_dual_element. 
+		L^*V_i is "represented" via a suitable object or data structure (depending on the basis chosen).
+		For instance in the case of Ulam :math:`V_i(f) = \int_[x_{i},x_{i+1}] f`, and all we need to represent  :math:`L^*V_i` it is the two preimages :math:`T^{-1}(x_i),T^{-1}(x_{i+1})`.
+		
+		Returns:
+			dual_element
 		
 		Abstract method.
 		"""
 		raise NotImplementedError
 
-	def project_dual_element(self, dual_element):
+	def project_dual_element(self, dual_element, begin_i = 0, end_i = None):
 		"""
 		Computes the duality products of a dual element (as returned by :func:`dual_composed_with_dynamic`) with all the functions of the basis.
 		
@@ -54,29 +43,12 @@ class Basis:
 		"""
 		raise NotImplementedError
 
-	def assemble(self, dynamic, epsilon, prec=53):
-		"""
-		Very generic assembler function
-		"""
-	
-		n = len(self)
-		P = matrix(dynamic.field, n, n, sparse=True)
-		
-		for i, dual_element in self.dual_composed_with_dynamic(dynamic, epsilon):
-			for j, x in self.project_dual_element(dual_element):
-				P[i,j] += x
-	
-		return P
-
 	def nonzero_on(self, I):
 		r"""
-		Indices i such that :math:`\phi_i(x) \neq 0` is nonzero for some :math:`x\in I`
+		Generator yielding the set of indices i such that :math:`\phi_i(x) \neq 0` is nonzero for some `x\in I`
 		
 		Args:
 			I (interval)
-
-		Returns / Yields:
-			an iterable (generator or sequence)
 		"""
 		raise NotImplementedError
 
@@ -127,7 +99,7 @@ class Basis:
 
 	def norm_estimate(self, v):
 		"""
-		Rigorous estimate (from above) of ||v||_w
+		Rigorous estimate (from above) of ||v||
 		
 		Args:
 			v (numpy vector):
@@ -145,7 +117,7 @@ class Basis:
 			PP (scipy sparse matrix):
 			
 		Returns:
-			x (real with RNDU): such that :math:`\|PP\|_w \leq x`
+			x (real with RNDU): such that :math:`\|PP\| \leq x`
 		"""
 		raise NotImplementedError
 
@@ -162,7 +134,7 @@ class Basis:
 		raise NotImplementedError
 
 	def bound_on_norms_of_powers(self, dynamic, project_left = False, project_right = False):
-		r"""
+		"""
 		Uniform bound on :math:`\|L^i\|`.
 		
 		Gives a bound to the norms of :math:`\|(\Pi_1 L \Pi_2)^i\|` for each `i`, where
@@ -182,13 +154,13 @@ class Basis:
 		raise NotImplementedError
 
 	def matrix_norm_diameter(self, P):
-		r"""
+		"""
 		Diameter (in the matrix norm) of an interval matrix.
 		
 		Must be rigorous.
 		
 		Returns:
-			M such that :math:`\|P_1-P_2\|_w \leq M` for all :math:`P_1,P_2 \in P`.
+			M such that :math:`\|P_1-P_2\| \leq M` for all :math:`P_1,P_2 \in P`.
 		"""
 		raise NotImplementedError
 
@@ -204,9 +176,8 @@ class Basis:
 			res (real RNDU): an upper bound to :math:`\|Pv-v\|`
 		"""
 		v = P.parent().column_space()(vector(v))
-		w = sparse_matvec(P, v) - v
-		w = w.apply_map(lambda x: x.magnitude())  # assumes the norm is monotonic
-		return self.norm_estimate(w)
+		w = sparse_matvec(P, v)
+		return self.rigorous_norm(v-w).upper()
 
 	def invariant_measure_strong_norm_bound(self, dynamic):
 		"""
@@ -215,23 +186,11 @@ class Basis:
 		Typically this can be derived from the Lasota-Yorke constants.
 
 		Returns:
-			B' (real constant): such that :math:`B' \leq \|f\|_s`, :math:`f` being the invariant measure of the dynamic (normalized to have integral 1).
+			B' (real constant): such that :math:`B' \leq \|f\|_s`, :math:`f` being the invariant measure of the dynamic.
 		"""
 
-		A, B, l = self.dfly(dynamic)
-		return B
-
-	def lasota_yorke_constants(self, dynamic):
-		"""
-		Return Lasota-Yorke constants
-		
-		This is meant to replace `dynamic.lasota_yorke_constants()` with a more norm-agnostic packaging
-		
-		Returns:
-			(lambda, B) (pair of real intervals): such that :math:`\|Lf\|_s \leq \lambda \|f\|_s + B\|f\|`
-		"""
-		warn('Deprecated: we are trying to move to dfly')
-		raise NotImplementedError
+		l, B = self.lasota_yorke_constants(dynamic)
+		return B / (1-l)
 
 	def iterate_with_lasota_yorke(self, dynamic):
 		"""
@@ -239,58 +198,4 @@ class Basis:
 
 		In some cases (most notably, in the infinity-norm), a dynamic `D` does not admit a LY inequality but an iterate `D^k` does.
 		"""
-		warn('Deprecated: we are trying to move to dfly')
-		raise NotImplementedError
-
-	def dfly(self, dynamic, discrete=False, n=None):
-		"""
-		Return constants of the dfly inequality :math:`\|L^n f\|_s \leq A \lambda^n \|f\|_s + B\|f\|_w` 
-
-		This function should make `lasota_yorke_constants` and `iterate_with_lasota_yorke` obsolete.
-		
-		Input:
-			Dynamic:
-			discrete: if True, returns constants such that the DFLY holds for the projected operator 
-			          and **for all functions in the discrete space only** (so we can make a DFLY for Pi*L instead of Pi*L*Pi)
-			n: if it is not None, returns constants that hold only up to a certain value of n
-
-		Returns:
-			(A, B, lambda): tuple of intervals
-		"""
-		raise NotImplementedError
-
-	def strong_to_weak_norm_equivalence(self):
-		r"""
-		Return the constant required to estimate a strong norm with a weak norm (in the discretized space)
-
-		Since we have a finite-dimensional discretized space, there is a constant
-		such that :math:`\|f\|_s \leq C \|f\|_w'` for each `f` in the discrete space.
-
-		Returns:
-			C (real with RNDU):
-		"""
-		raise NotImplementedError
-
-	def ly_weak_to_weak_norm_equivalence(self):
-		r"""
-		Returns a constant such that ||f||_{w'} \leq ||f||_{w}. It's 1 in most cases.
-		"""
-		return 1
-
-	def strong_power_norms(self, dynamic, m):
-		"""
-		returns a list of bounds ||L_h^i f||_s <= M_i*||f||_w, for i in range(m), which hold for all zero-integral functions f
-		in the discretized space.
-		"""
-
-		L = list()
-
-		K = self.strong_to_weak_norm_equivalence()
-		K2 = self.ly_weak_to_weak_norm_equivalence()
-		L.append(K)
-
-		for i in range(1, m):
-			(A, B, l) = self.dfly(dynamic, True, i)
-			L.append(A*(l**i)*K + B*K2)
-
-		return L
+		return NotImplementedError

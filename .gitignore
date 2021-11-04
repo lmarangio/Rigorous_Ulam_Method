@@ -1,0 +1,5 @@
+*.pyc
+invariant.txt
+invariant_hole.txt
+*.mtx
+doc/build

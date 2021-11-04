@@ -1,0 +1,4 @@
+- Controllare gli integrali ultima riga: ancora non preserva tutto l'integrale
+- Capire come stimare la norma della matrice, per l'errore steperror
+- Controllare con la stima di Federico su steperror
+

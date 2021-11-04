@@ -1,6 +1,6 @@
-# CompInvMeas-Python
+# Rig_Ulam_Sage
 
-Python code to compute rigorous invariant measures for dynamical systems.
+Python code to compute rigorous invariant measures for dynamical systems via Ulam approximation.
 
 ## Installation instructions
 
